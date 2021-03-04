@@ -1,0 +1,226 @@
+---
+title: 'Lesson 9: Case Study'
+output:
+  html_notebook
+---
+
+## Analyze Facebook Ad Campaign Conversion Data
+
+### Preface
+This case study aims to help you put the concepts and skills you have learnt in this course into action. While you can easily skim through this document and learn, we strongly recommend you to create your own `R Notebook` document and follow along, so you can practice things you've already learnt as well as a few new things you will come across in this lesson.  
+
+If you are following along, you do not need to type the instructions like the one you're reading.  
+
+### Objective
+In this case study, we will use a sample Facebook ad campaign conversion dataset, that mimics some of the online ad campaign datasets you might see as a marketer, especially if you are in the digital marketing space. Even if you are not a digital marketer, the data and content is generic enough to understand for anyone.  
+
+We will cover many of the topics you have learnt during this course, like downloading files, reading data from files, understanding the type and structure of data, manipulating it and transforming it for your analysis, visualizing it in various ways and documenting and sharing the results of your analysis.
+
+### Getting Data
+For this exercise, we will download a sample Facebook ad campaign conversion dataset from a remote location. Here is the url of the dataset - `https://raw.githubusercontent.com/sumanpoluri/open-datasets/main/sample_fb_ads_conversion_data/sample_fb_ads_conversion_data.csv`. This is derived from the [Social Conversion Optimzation](https://www.kaggle.com/loveall/clicks-conversion-tracking) dataset.
+
+#### Download The File
+First let's download the data and save it to a local file. In this case, we will downlaod the file into a folder named `data` under our current (`Lesson 9`) folder.
+
+```{r download-fb-ads-file, message = FALSE}
+fb_ads_file_url <- "https://raw.githubusercontent.com/sumanpoluri/open-datasets/main/sample_fb_ads_conversion_data/sample_fb_ads_conversion_data.csv"
+local_folder_name <- "data" # define local folder name
+local_file_name <- "fb_ads_conv_data.csv" # define local file name
+local_file_path <- file.path(local_folder_name, local_file_name) # create the local file path
+if(!file.exists(local_file_path)) {
+  if(!dir.exists(local_folder_name)) dir.create(local_folder_name) # create the local folder, if it does not exist
+  download.file(url = fb_ads_file_url, destfile = local_file_path) # download the file 
+}
+
+if(file.exists(local_file_path)) {
+  print("File downloaded")
+} else {
+  print("Error! File not found.")
+}
+```
+
+<div class="alert alert-info">
+🤔 **Stop and think**  
+Instead of using a string for the local file path, we used the `file.path` function, passing the local folder name and file name as arguments. Can you think of any reason why we did that?
+</div>
+
+#### Read The Data
+Now that the file is downloaded, let's read the data from the file.  
+  
+Before that, let's load the tidyverse packages.
+
+```{r load-pkg, message = FALSE}
+library(tidyverse)
+```
+
+Let's use the csv data import function from the `readr` package.
+
+```{r read-fb-ads-file, message = FALSE}
+data <- read_csv(file = local_file_path)
+```
+
+Did we really read the data? Let's print out a sample to confirm.
+
+```{r data-head}
+head(data)
+```
+
+### Review The Data  
+
+We have learnt a few ways to view the structure and type of data in an object, for e.g., `str()` and `glimpse()`. Let's see what variables are present in the `data` object.
+
+```{r glimpse-data}
+glimpse(data)
+```
+
+The documentation for the dataset describes the variables the following way:
+
+1. `ad_id`: an unique ID for each ad.
+2. `xyz_campaign_id`: an ID associated with each ad campaign of XYZ company.
+3. `fb_campaign_id`: an ID associated with how Facebook tracks each campaign.
+4. `age`: age of the person to whom the ad is shown.
+5. `gender`: gender of the person to whim the add is shown
+6. `interest`: a code specifying the category to which the person’s interest belongs (interests are as mentioned in the person’s Facebook public profile).
+7. `Impressions`: the number of times the ad was shown.
+8. `Clicks`: number of clicks on for that ad.
+9. `Spent`: Amount paid by company xyz to Facebook, to show that ad.
+10. `Total conversion`: Total number of people who enquired about the product after seeing the ad.
+11. `Approved conversion`: Total number of people who bought the product after seeing the ad.
+
+Let's rename some of the columns so they have a consistent naming scheme.
+
+```{r rename-cols}
+data <- data %>% 
+  rename_all(tolower) %>% 
+  rename_all(~ gsub(" ", "_", .)) %>%
+  glimpse()
+```
+Here we used a variant of the `rename()` function from the `dplyr` package. We chained two transformations to happen in sequence
+- the first, to change the column names to lower case, using the `tolower()` function
+- the second, to replace the spaces in the column names to underscores, using the `gsub()` function
+
+<div class="alert alert-info">
+🤔 **Stop and think**  
+Can we achieve the same result without using the `gsub()` function?  
+Hint: Look into the tidyverse packages
+</div>
+
+We also notice that the campaign ids are numeric. It makes sense to treat them as categorical rather than continuous values.  
+
+```{r camp-id-to-factor}
+data <- data %>% 
+  mutate(xyz_campaign_id = as.factor(xyz_campaign_id))
+```
+
+
+We'll explore the data a little bit more now. First we'll check how many unique ads, campaigns, interests, etc. are in this data.
+
+```{r unique-count-by-col}
+data %>% summarise_all(n_distinct)
+```
+That tells us we have 3 ad campaigns for the XYZ, 4 age groups, 40 unique interests represented in this data.  
+
+Some of the important KPIs that help understand the effectiveness of an ad campaign are:
+
+- `Conversion Rate`: How many clicks converted to your objective (in percentage). This depends on the objective of the campaign - either user sign-ups, or product purchases or app install etc. In this sample dataset, we see that two conversions were captured - 'Total' and 'Approved'. So we will use them for our analysis.  
+- `Cost Per Conversion`: How much did it cost to convert an impression to a click.  
+- `Cost Per Click (CPC)`: How much money was spent to get one click.  
+- `Click Through Rate (CTR)`: How many impressions converted to clicks (in percentage).  
+
+Let us add some variables to our dataset to find out these metrics
+
+```{r}
+data <- data %>% 
+  mutate(cpc = round(spent / clicks, 2),  ctr = round((clicks / impressions) * 100, 4)) %>%
+  print()
+```
+
+### Visualize The Data
+
+To understand how each campaign compares to other, let's plot some data.
+
+```{r plot-camp-spend}
+# Plot amount spent per campaign
+data %>% 
+  group_by(xyz_campaign_id) %>% 
+  summarise(total_spent = sum(spent)) %>% 
+  ggplot(mapping = aes(x = xyz_campaign_id, y = total_spent, fill = xyz_campaign_id)) +
+  geom_bar(stat = "identity", na.rm = TRUE) + 
+  geom_text(mapping = aes(label = round(total_spent, 2)), vjust = -0.25) +
+  xlab("Campaigns") + 
+  ylab("Ad Spend") + 
+  ggtitle("Campaign Ad Spend")
+```
+This shows that the company spent the most on campaign 1178. 
+
+<div class="alert alert-info">
+🤔 **Stop and think**  
+- Often there are multiple ways to arrive at the same visualization. For e.g., here we used `geom_bar()` with `stat="identity` to build the bar graph. What other ways could we use to build the same graph? (hint: look into the stat functions in the ggplot2 package)
+- Here we used `geom_text()` to add additional detail to the graph. Check out the ggplot2 package documentation to find more ways to add information to the plot.
+</div>
+
+How do the conversion vary among age groups, and by gender, across campaigns?
+
+```{r boxplot-camp-spend}
+# Plot amount spent per campaign
+data %>% 
+  ggplot(mapping = aes(x = age, y = approved_conversion, fill = age)) +
+  geom_col() + 
+  facet_grid(gender ~ xyz_campaign_id) + 
+  labs(x = "Age Groups", 
+       y = "Approved Conversion", 
+       title = "Approved Conversion By Age, Gender And Campaign") + 
+  theme_linedraw()
+```
+
+We see that, regardless of the campaign, most conversions came from the age group 30-34. However, be aware that we cannot draw any conclusions from the data we have as to why it was so. It could be that the campaign was targeted to the younger demographic or it could be due to some other reason.
+
+<div class="alert alert-info">
+🤔 **Stop and think**  
+Note that this graph *looks* different than the others. What could be the reason?
+</div>
+
+Now let's look at how different variables correlate in for the campaign 1178.
+
+```{r scatter-matrix}
+data %>% 
+  filter(xyz_campaign_id == "1178") %>%
+  select(spent, impressions, clicks, total_conversion, approved_conversion) %>%
+  plot(pch = 20, cex = 1.2, col = "#1abc9c")
+```
+
+Here we used the base graphics system's `plot()` function. Although there are better ways to visualize correlation, there's some useful information that we can still glean from this graph. It shows that higher ad spend shows higher impressions, clicks, and conversion.  
+
+<div class="alert alert-info">
+🤔 **Stop and think**  
+What would be a better way to visualize correlations between such variables? There is no single right answer for this. If you're not very statistics savvy, don't be afraid to Google.
+</div>
+
+What can we find more about the ad spend?
+
+```{r gender-spend}
+data %>%
+  filter(xyz_campaign_id == "1178") %>%
+  ggplot(aes(x = spent, y = gender, fill = age)) + 
+  geom_bar(stat = "identity") + 
+  labs(x = "Ad Spend", y = "Gender", title = "Ad Spend By Gender (Campaign 1178)")
+```
+
+It shows that more money was spent to target women than men in this campaign.
+
+Let's see what were the most expensive segments of the audience.
+
+```{r exp-segments, message=FALSE}
+data %>%
+  group_by(age, gender, interest) %>%
+  summarise(spent_per_total_conversion = round(sum(spent)/sum(total_conversion),2)) %>% 
+  arrange(desc(spent_per_total_conversion)) %>%
+  print()
+```
+
+I think this should be good enough for now.  
+
+### Documenting And Sharing Your Analysis
+
+The good news is, there is little else to do here. You have already been documenting your analysis, code, and results in this R Notebook file. All you have to do is, R Notebook HTML file that is in your `Lesson 9` folder with anyone you want.  
+
